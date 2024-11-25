@@ -23,13 +23,13 @@ export function eigentrustWithWeightedTrustedSet(
     throw new Error("Length of trustedSetWeights must match the number of peers in the network.");
   }
 
-  // Normalize the trust matrix - each row should sum to 1
-  const normalizedTrustMatrix = normalizeTrustMatrix(trustMatrix);
   // Normalize trusted set weights to sum to 1
-  const normalizedTrustedWeights = normalizeTrustedSetWeights(trustedSetWeights);
+  const normalizedTrustedSet = normalizeTrustedSetWeights(trustedSetWeights);
+  // Normalize the trust matrix - each row should sum to 1
+  const normalizedTrustMatrix = normalizeTrustMatrix(trustMatrix, () => normalizedTrustedSet);
 
   // Initialize the trust vector t with the normalized trusted weights
-  let tNow = [...normalizedTrustedWeights];
+  let tNow = [...normalizedTrustedSet];
   let tPrev = [...tNow];
 
   // Transpose the normalized matrix
@@ -41,7 +41,7 @@ export function eigentrustWithWeightedTrustedSet(
   while (delta > errorThreshold && iteration < maxIterations) {
     // Compute the new trust vector: t = (1-α)CT·t + αp
     let tStep = multiplyMatrixVector(transposedMatrix, tPrev);
-    tNow = tStep.map((tStepVal, i) => (1 - alpha) * tStepVal + alpha * normalizedTrustedWeights[i]);
+    tNow = tStep.map((tStepVal, i) => (1 - alpha) * tStepVal + alpha * normalizedTrustedSet[i]);
 
     // Calculate delta (convergence check)
     delta = calculateDelta(tNow, tPrev);
@@ -58,13 +58,13 @@ export function eigentrustWithWeightedTrustedSet(
   return tNow;
 }
 
-function normalizeTrustMatrix (trustMatrix) {
-  const numPeers = trustMatrix.length;
-  return trustMatrix.map(row => {
+function normalizeTrustMatrix (trustMatrix, getDefaultWeightsFor) {
+  return trustMatrix.map((row, rowIndex) => {
     const rowSum = row.reduce((sum, val) => sum + val, 0);
     return rowSum > 0 
       ? row.map(val => val / rowSum)
-      : row.map(() => 1 / numPeers); // If no outgoing trust, distribute evenly
+      // If the row sum is 0, use default weights for that row
+      : getDefaultWeightsFor(rowIndex);
   });
 }
 

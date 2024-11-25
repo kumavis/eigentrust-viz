@@ -1,41 +1,9 @@
-import { useState } from 'react'
-import ForceGraph2D from 'react-force-graph-2d';
+import { useState, useMemo, useEffect } from 'react'
 import './App.css'
 import { eigentrustWithWeightedTrustedSet } from './eigentrust';
+import BalanceDistribution from './BalanceDistribution';
+import { Graph } from './Graph';
 
-const Graph = ({ data }) => {
-  // force graph mutates the data so we make a deep copy
-  const dataCopy = JSON.parse(JSON.stringify(data));
-  return (
-    <ForceGraph2D
-      graphData={dataCopy}
-      nodeLabel="id"
-      nodeAutoColorBy="group"
-      nodeCanvasObject={(node, ctx, globalScale) => {
-        const label = `${node.id} (${node.score.toFixed(2)})`;
-        const fontSize = 12/globalScale;
-        ctx.font = `${fontSize}px Sans-Serif`;
-        const textWidth = ctx.measureText(label).width;
-        const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2); // some padding
-
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-        ctx.fillRect(node.x - bckgDimensions[0] / 2, node.y - bckgDimensions[1] / 2, ...bckgDimensions);
-
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        ctx.fillStyle = node.color;
-        ctx.fillText(label, node.x, node.y);
-
-        node.__bckgDimensions = bckgDimensions; // to re-use in nodePointerAreaPaint
-      }}
-      nodePointerAreaPaint={(node, color, ctx) => {
-        ctx.fillStyle = color;
-        const bckgDimensions = node.__bckgDimensions;
-        bckgDimensions && ctx.fillRect(node.x - bckgDimensions[0] / 2, node.y - bckgDimensions[1] / 2, ...bckgDimensions);
-      }}
-    />
-  )
-}
 
 const Slider = ({ value, setValue }) => {
   const handleChange = (event) => {
@@ -59,13 +27,19 @@ const Slider = ({ value, setValue }) => {
 };
 
 function App() {
-  const [alpha, setAlpha] = useState(0.1);
-  const [data, setData] = useState({
+  // Initial state constants
+  const INITIAL_STATE = {
     nodes: [
       { id: 'Alice', group: 1, score: 10 },
       { id: 'Bob', group: 1, score: 15 },
       { id: 'Carol', group: 1, score: 20 },
       { id: 'Dave', group: 1, score: 0 },
+      { id: 'Sybil', group: 2, score: 0 },
+      { id: 'Sybil-1', group: 2, score: 0 },
+      { id: 'Sybil-2', group: 2, score: 0 },
+      { id: 'Sybil-3', group: 2, score: 0 },
+      { id: 'Sybil-4', group: 2, score: 0 },
+      { id: 'Sybil-5', group: 2, score: 0 },
     ],
     links: [
       { source: 'Alice', target: 'Alice', value: 0.2 },
@@ -77,9 +51,18 @@ function App() {
       { source: 'Carol', target: 'Alice', value: 0.2 },
       { source: 'Carol', target: 'Bob', value: 0.1 },
       { source: 'Carol', target: 'Carol', value: 0.3 },
-      { source: 'Carol', target: 'Dave', value: 0.4 },
+      { source: 'Carol', target: 'Dave', value: 1 },
+      { source: 'Sybil-1', target: 'Sybil', value: 1 },
+      { source: 'Sybil-2', target: 'Sybil', value: 1 },
+      { source: 'Sybil-3', target: 'Sybil', value: 1 },
+      { source: 'Sybil-4', target: 'Sybil', value: 1 },
+      { source: 'Sybil-5', target: 'Sybil', value: 1 },
     ],
-  });
+  };
+
+  const [alpha, setAlpha] = useState(0.5);
+  const [data, setData] = useState(INITIAL_STATE);
+  const [scoreHistory, setScoreHistory] = useState([balancesFromGraphData(INITIAL_STATE)]);
 
   const calculateScores = () => {
     const normalizedMatrix = data.nodes.map((node, i) => {
@@ -109,24 +92,87 @@ function App() {
     const sumScores = scores.reduce((sum, val) => sum + val, 0);
     const normalizedScores = scores.map(val => val / sumScores);
 
-    console.log(scores);
-    console.log(normalizedScores);
+    // console.log(scores);
+    // console.log(normalizedScores);
     const newData = { ...data };
     const issuance = 10;
     newData.nodes.forEach((node, i) => {
       node.score += issuance * normalizedScores[i];
     });
+
+    // After updating scores, add current balances to history
+    const currentBalances = balancesFromGraphData(newData);
+    setScoreHistory(prev => [...prev, currentBalances]);
     setData(newData);
   }
+
+  const addNode = () => {
+    const newData = { ...data };
+    const newNodeId = `Node${newData.nodes.length + 1}`;
+    newData.nodes.push({
+      id: newNodeId,
+      group: 1,
+      score: 0,
+    });
+    setData(newData);
+    calculateScores();
+  };
+
+  const addRandomLink = () => {
+    const newData = { ...data };
+    
+    // Try to add a random link up to 100 times (to handle case where most links exist)
+    for (let attempt = 0; attempt < 100; attempt++) {
+      const source = newData.nodes[Math.floor(Math.random() * newData.nodes.length)].id;
+      const target = newData.nodes[Math.floor(Math.random() * newData.nodes.length)].id;
+      
+      // Check if link already exists
+      if (!newData.links.some(link => 
+          link.source === source && link.target === target)) {
+        newData.links.push({
+          source,
+          target,
+          value: Math.random()
+        });
+        setData(newData);
+        break;
+      }
+    }
+    calculateScores();
+  };
+
+  const resetSimulation = () => {
+    setData(JSON.parse(JSON.stringify(INITIAL_STATE)));
+    setScoreHistory([balancesFromGraphData(INITIAL_STATE)]);
+  };
+
+  // Set up interval for calculating scores only
+  useEffect(() => {
+    const interval = setInterval(() => {
+      calculateScores();
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [data]); 
 
   return (
     <>
       <h1>EigenTrust</h1>
       <div className="read-the-docs">
         <Slider value={alpha} setValue={setAlpha}/>
-        <button onClick={() => calculateScores()}>
-          Click here to calculate scores
-        </button>
+        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '10px' }}>
+          <button onClick={addNode}>
+            Add Node
+          </button>
+          <button onClick={addRandomLink}>
+            Add Random Link
+          </button>
+          <button onClick={resetSimulation} style={{ backgroundColor: '#ff4444' }}>
+            Reset
+          </button>
+        </div>
+      </div>
+      <div style={{ marginTop: '20px' }}>
+        <BalanceDistribution data={scoreHistory} />
       </div>
       <div className="card">
         <Graph data={data}/>
@@ -136,3 +182,11 @@ function App() {
 }
 
 export default App
+
+function balancesFromGraphData(data) {
+  const balances = {};
+  data.nodes.map(node => {
+    balances[node.id] = node.score;
+  });
+  return balances;
+}

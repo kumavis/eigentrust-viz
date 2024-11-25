@@ -1,47 +1,78 @@
+// The EigenTrust Algorithm for Reputation Management in P2P Networks
+// https://sci-hub.st/https://dl.acm.org/doi/10.1145/775152.775242
+
+// tNow = p;
+// repeat
+//   tStep = CT * tNow;
+//   tNext = (1-a) * tStep + a * p;
+//   δ = ‖tNext − tNow‖;
+//   tNow = tNext;
+// until δ < error;
+
 export function eigentrustWithWeightedTrustedSet(
-  C,
+  trustMatrix,
   trustedSetWeights,
   alpha = 0.15,
   errorThreshold = 1e-6,
   maxIterations = 1000
 ) {
-  const numPeers = C.length;
+  const numPeers = trustMatrix.length;
 
   // Ensure trustedSetWeights length matches the number of peers
   if (trustedSetWeights.length !== numPeers) {
-      throw new Error("Length of trustedSetWeights must match the number of peers in the network.");
+    throw new Error("Length of trustedSetWeights must match the number of peers in the network.");
   }
 
-  // Initialize the trust vector t with the trusted set weights
-  let t = [...trustedSetWeights];
-  let tPrev = [...t];
+  // Normalize the trust matrix - each row should sum to 1
+  const normalizedTrustMatrix = normalizeTrustMatrix(trustMatrix);
+  // Normalize trusted set weights to sum to 1
+  const normalizedTrustedWeights = normalizeTrustedSetWeights(trustedSetWeights);
 
-  // Transpose the matrix C
-  const CT = transposeMatrix(C);
+  // Initialize the trust vector t with the normalized trusted weights
+  let tNow = [...normalizedTrustedWeights];
+  let tPrev = [...tNow];
+
+  // Transpose the normalized matrix
+  const transposedMatrix = transposeMatrix(normalizedTrustMatrix);
 
   let delta = Infinity;
   let iteration = 0;
 
   while (delta > errorThreshold && iteration < maxIterations) {
-      // Compute the new trust vector
-      let tNew = multiplyMatrixVector(CT, tPrev);
+    // Compute the new trust vector: t = (1-α)CT·t + αp
+    let tStep = multiplyMatrixVector(transposedMatrix, tPrev);
+    tNow = tStep.map((tStepVal, i) => (1 - alpha) * tStepVal + alpha * normalizedTrustedWeights[i]);
 
-      // Blend with the trusted set weights
-      t = tNew.map((val, i) => (1 - alpha) * val + alpha * trustedSetWeights[i]);
+    // Calculate delta (convergence check)
+    delta = calculateDelta(tNow, tPrev);
 
-      // Calculate delta
-      delta = calculateDelta(t, tPrev);
-
-      // Update tPrev for the next iteration
-      tPrev = [...t];
-      iteration++;
+    // Update tPrev for the next iteration
+    tPrev = [...tNow];
+    iteration++;
   }
 
   if (iteration >= maxIterations) {
-      console.warn("Eigentrust algorithm did not converge within the maximum iterations.");
+    console.warn("Eigentrust algorithm did not converge within the maximum iterations.");
   }
 
-  return t;
+  return tNow;
+}
+
+function normalizeTrustMatrix (trustMatrix) {
+  const numPeers = trustMatrix.length;
+  return trustMatrix.map(row => {
+    const rowSum = row.reduce((sum, val) => sum + val, 0);
+    return rowSum > 0 
+      ? row.map(val => val / rowSum)
+      : row.map(() => 1 / numPeers); // If no outgoing trust, distribute evenly
+  });
+}
+
+function normalizeTrustedSetWeights (trustedSetWeights) {
+  const totalWeight = trustedSetWeights.reduce((sum, weight) => sum + weight, 0);
+  return totalWeight > 0
+    ? trustedSetWeights.map(w => w / totalWeight)
+    : trustedSetWeights.map(() => 1 / numPeers);
 }
 
 // Helper function to transpose a matrix
@@ -49,7 +80,7 @@ function transposeMatrix(matrix) {
   return matrix[0].map((_, colIndex) => matrix.map(row => row[colIndex]));
 }
 
-// Helper function to multiply a matrix and a vector
+// Helper function to multiply a matrix and a vector. Returns a new vector.
 function multiplyMatrixVector(matrix, vector) {
   return matrix.map(row => row.reduce((sum, val, index) => sum + val * vector[index], 0));
 }
@@ -58,18 +89,3 @@ function multiplyMatrixVector(matrix, vector) {
 function calculateDelta(vector1, vector2) {
   return Math.sqrt(vector1.reduce((sum, val, index) => sum + Math.pow(val - vector2[index], 2), 0));
 }
-
-// // Example Usage
-// const C = [
-//   [0.2, 0.3, 0.5],
-//   [0.4, 0.4, 0.2],
-//   [0.3, 0.2, 0.5],
-// ];
-
-// // Assume the trustedSetWeights array is already normalized
-// const trustedSetWeights = [0.7, 0.0, 0.3]; // Peer 0 has 70% weight, Peer 2 has 30% weight, Peer 1 has 0%
-
-// const globalTrust = eigentrustWithWeightedTrustedSet(C, trustedSetWeights);
-// console.log("Global Trust Vector with Weighted Trusted Set:", globalTrust);
-
-// // Helper functions (transposeMatrix, multiplyMatrixVector, calculateDelta) remain the same as before

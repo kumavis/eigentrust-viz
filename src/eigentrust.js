@@ -31,6 +31,7 @@ export function eigentrustWithWeightedTrustedSet(
   // Initialize the trust vector t with the normalized trusted weights
   let tNow = [...normalizedTrustedSet];
   let tPrev = [...tNow];
+  let steps = [tNow];
 
   // Transpose the normalized matrix
   const transposedMatrix = transposeMatrix(normalizedTrustMatrix);
@@ -48,6 +49,7 @@ export function eigentrustWithWeightedTrustedSet(
 
     // Update tPrev for the next iteration
     tPrev = [...tNow];
+    steps.push(tNow);
     iteration++;
   }
 
@@ -55,7 +57,7 @@ export function eigentrustWithWeightedTrustedSet(
     console.warn("Eigentrust algorithm did not converge within the maximum iterations.");
   }
 
-  return tNow;
+  return { result: tNow, steps, iterations: iteration };
 }
 
 function normalizeTrustMatrix (trustMatrix, getDefaultWeightsFor) {

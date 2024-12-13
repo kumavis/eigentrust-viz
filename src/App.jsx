@@ -1,210 +1,35 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo } from 'react'
 import './App.css'
+
 import { eigentrustWithWeightedTrustedSet } from './eigentrust';
-import BalanceDistribution from './BalanceDistribution';
+
+import { Slider } from './widgets';
+import { ScoreDistribution } from './ScoreDistribution';
 import { Graph } from './Graph';
+import { TrustMatrix } from './TrustMatrix';
 
-const TrustMatrix = ({ peers, trustMatrix }) => {
-  if (trustMatrix.length !== peers.length || trustMatrix.some(row => row.length !== peers.length)) {
-    throw new Error("Trust matrix dimensions must match the number of peers.");
-  }
+import * as scenarios from './scenarios'
 
-  const cellStyle = (value) => {
-    // Black at full trust (1), white at no trust (0)
-    const colorVal = 255 * (1 - value);
-    return {
-      backgroundColor: `rgba(${colorVal}, ${colorVal}, ${colorVal})`,
-      width: "30px",
-      height: "30px",
-      textAlign: "center",
-      border: "1px solid #ccc",
-    }
-  };
 
-  // const renderRow = (row, rowIndex) => (
-  //   <div style={{ display: "flex" }} key={rowIndex}>
-  //     {row.map((value, colIndex) => (
-  //       <div
-  //         key={colIndex}
-  //         style={cellStyle(value)}
-  //         title={`Trust: ${value.toFixed(2)}`} // Tooltip to show the exact trust value
-  //       />
-  //     ))}
-  //   </div>
-  // );
-
-  return (
-    <div>
-      <h3>Normalized Trust Matrix</h3>
-      <div style={{ display: "flex", justifyContent: "center" }}>
-        {/* Y-axis labels */}
-        <div style={{ display: "grid", gridTemplateRows: `repeat(${peers.length}, 30px)`, marginRight: "10px" }}>
-          {peers.map((peer, index) => (
-            <div key={`y-label-${index}`} style={{ lineHeight: "30px", textAlign: "right" }}>
-              {peer.id}
-            </div>
-          ))}
-        </div>
-
-        {/* Grid with x-axis labels */}
-        <div>
-          {/* X-axis labels */}
-          <div style={{ display: "grid", gridTemplateColumns: `30px repeat(${peers.length}, 30px)`, justifyContent: 'center', marginBottom: "5px" }}>
-            {peers.map((peer, index) => (
-              <div
-                key={`x-label-${index}`}
-                style={{
-                  transform: "translateX(24px) rotate(-45deg)",
-                  transformOrigin: "left bottom",
-                  wordWrap: 'unset',
-                  whiteSpace: 'nowrap',
-                  alignContent: 'end',
-                }}
-              >
-                {peer.id}
-              </div>
-            ))}
-          </div>
-
-          {/* Trust matrix grid */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: `repeat(${peers.length}, 30px)`,
-              gap: "1px", // Optional: Adds space between cells
-            }}
-          >
-            {trustMatrix.flatMap((row, rowIndex) =>
-              row.map((value, colIndex) => (
-                <div
-                  key={`${rowIndex}-${colIndex}`}
-                  style={cellStyle(value)}
-                  title={`Trust: ${value.toFixed(2)}`} // Tooltip to show the exact trust value
-                />
-              ))
-            )}
-          </div>
-        </div>
-      </div>
-
-      <div style={{ marginTop: "10px" }}>
-        <strong>Legend:</strong>
-        <span style={{ display: "inline-block", backgroundColor: "white", width: "30px", height: "30px", marginLeft: "5px" }} /> 0
-        <span style={{ display: "inline-block", backgroundColor: "black", width: "30px", height: "30px", marginLeft: "5px" }} /> 1
-      </div>
-    </div>
-  );
-};
-
-const Slider = ({ value, setValue }) => {
-  const handleChange = (event) => {
-    setValue(parseFloat(event.target.value));
-  };
-
-  return (
-    <div style={{ width: "300px", margin: "20px auto", textAlign: "center" }}>
-      <input
-        type="range"
-        min="0"
-        max="1"
-        step="0.1"
-        value={value}
-        onChange={handleChange}
-        style={{ width: "100%" }}
-      />
-      <div>Balance Weight: {value.toFixed(1)}</div>
-    </div>
-  );
-};
-
-function App() {
+export default function App() {
+  const INITIAL_STATE = cloneScenario(scenarios.BasicWithSybils);
   // Initial state constants
-  const INITIAL_STATE = {
-    nodes: [
-      { id: 'Alice', group: 1, score: 10 },
-      { id: 'Bob', group: 1, score: 15 },
-      { id: 'Carol', group: 1, score: 20 },
-      { id: 'Dave', group: 1, score: 0 },
-      { id: 'Sybil', group: 2, score: 0 },
-      { id: 'Sybil-1', group: 2, score: 0 },
-      { id: 'Sybil-2', group: 2, score: 0 },
-      { id: 'Sybil-3', group: 2, score: 0 },
-      { id: 'Sybil-4', group: 2, score: 0 },
-      { id: 'Sybil-5', group: 2, score: 0 },
-    ],
-    links: [
-      { source: 'Alice', target: 'Alice', value: 0.2 },
-      { source: 'Alice', target: 'Bob', value: 0.3 },
-      { source: 'Alice', target: 'Carol', value: 0.5 },
-      { source: 'Bob', target: 'Alice', value: 0.4 },
-      { source: 'Bob', target: 'Bob', value: 0.4 },
-      { source: 'Bob', target: 'Carol', value: 0.2 },
-      { source: 'Carol', target: 'Alice', value: 0.2 },
-      { source: 'Carol', target: 'Bob', value: 0.1 },
-      { source: 'Carol', target: 'Carol', value: 0.3 },
-      { source: 'Carol', target: 'Dave', value: 0.4 },
-      { source: 'Sybil-1', target: 'Sybil', value: 1 },
-      { source: 'Sybil-2', target: 'Sybil', value: 1 },
-      { source: 'Sybil-3', target: 'Sybil', value: 1 },
-      { source: 'Sybil-4', target: 'Sybil', value: 1 },
-      { source: 'Sybil-5', target: 'Sybil', value: 1 },
-    ],
-  };
-
-  const [alpha, setAlpha] = useState(0.5);
+  const [alpha, setAlpha] = useState(0.15);
   const [data, setData] = useState(INITIAL_STATE);
-  const [scoreHistory, setScoreHistory] = useState([balancesFromGraphData(INITIAL_STATE)]);
-
-  const normalizedMatrix = data.nodes.map((node, i) => {
-    const outgoingLinks = data.links.filter(link => link.source === node.id);
-    // TODO: normalize
-    const outGoingScores = data.nodes.map((node) => {
-      return outgoingLinks.find(link => link.target === node.id)?.value || 0;
-    });
-    return outGoingScores;
-  });
-
-  const calculateScores = () => {
-    const normalizedMatrix = data.nodes.map((node, i) => {
-      const outgoingLinks = data.links.filter(link => link.source === node.id);
-      // TODO: normalize
-      const outGoingScores = data.nodes.map((node) => {
-        return outgoingLinks.find(link => link.target === node.id)?.value || 0;
-      });
-      return outGoingScores;
-    });
-
-    // specify trusted set
+  const simulationData = useMemo(() => {
+    // Normalize the trust matrix and trusted set
+    const normalizedMatrix = normalizeMatrix(data);
     const trustedSet = data.nodes.map(node => node.score);
-    const totalWeight = trustedSet.reduce((sum, weight) => sum + weight, 0);
-    if (totalWeight > 0) {
-      for (const peer in trustedSet) {
-        trustedSet[peer] /= totalWeight;
-      }
-    }
-
-    // calculate scores
-    const scores = eigentrustWithWeightedTrustedSet(
+    const normalizedTrustedSet = normalizeVector(trustedSet);
+  
+    const history = calculateScoreHistory(data, alpha, normalizedMatrix, normalizedTrustedSet);
+    return {
       normalizedMatrix,
-      trustedSet,
-      alpha,
-    );
-    const sumScores = scores.reduce((sum, val) => sum + val, 0);
-    const normalizedScores = scores.map(val => val / sumScores);
-
-    // console.log(scores);
-    // console.log(normalizedScores);
-    const newData = { ...data };
-    const issuance = 10;
-    newData.nodes.forEach((node, i) => {
-      node.score += issuance * normalizedScores[i];
-    });
-
-    // After updating scores, add current balances to history
-    const currentBalances = balancesFromGraphData(newData);
-    setScoreHistory(prev => [...prev, currentBalances]);
-    setData(newData);
-  }
+      normalizedTrustedSet,
+      history,
+    };
+  }, [data, alpha]);
+  const { normalizedMatrix, normalizedTrustedSet, history: scoreHistory } = simulationData;
 
   const addNode = () => {
     const newData = { ...data };
@@ -215,7 +40,6 @@ function App() {
       score: 0,
     });
     setData(newData);
-    calculateScores();
   };
 
   const addRandomLink = () => {
@@ -238,30 +62,20 @@ function App() {
         break;
       }
     }
-    calculateScores();
   };
 
   const resetSimulation = () => {
     setData(JSON.parse(JSON.stringify(INITIAL_STATE)));
-    setScoreHistory([balancesFromGraphData(INITIAL_STATE)]);
   };
-
-  // Set up interval for calculating scores only
-  useEffect(() => {
-    // setTimeout(() => {
-    //   calculateScores();
-    // }, 0);
-    const interval = setInterval(() => {
-      calculateScores();
-    }, 1000);
-    return () => clearInterval(interval);
-  }, []);
 
   return (
     <>
       <h1>EigenTrust</h1>
       <div className="read-the-docs">
-        <Slider value={alpha} setValue={setAlpha} />
+        <div style={{ width: "300px", margin: "20px auto", textAlign: "center" }}>
+          <Slider value={alpha} setValue={setAlpha} step={0.05}/>
+          <div>Balance Weight: {alpha.toFixed(2)}</div>
+        </div>
         <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '10px' }}>
           <button onClick={addNode}>
             Add Node
@@ -275,7 +89,7 @@ function App() {
         </div>
       </div>
       <div style={{ marginTop: '20px' }}>
-        <BalanceDistribution data={scoreHistory} />
+        <ScoreDistribution data={scoreHistory} />
       </div>
       <div>
         <TrustMatrix peers={data.nodes} trustMatrix={normalizedMatrix} />
@@ -287,12 +101,51 @@ function App() {
   )
 }
 
-export default App
+function calculateScoreHistory (data, alpha, normalizedMatrix, normalizedTrustedSet) {
+  // calculate scores
+  const { result: scores, steps, iterations } = eigentrustWithWeightedTrustedSet(
+    normalizedMatrix,
+    normalizedTrustedSet,
+    alpha,
+  );
 
-function balancesFromGraphData(data) {
-  const balances = {};
-  data.nodes.map(node => {
-    balances[node.id] = node.score;
+  // After updating scores, add current balances to history
+  const history = stepsToNodeIdMapping(data, steps);
+  return history;
+}
+
+function stepsToNodeIdMapping(data, steps) {
+  const history = steps.map(step => {
+    const nodes = data.nodes.map((node, i) => {
+      return step[i];
+    });
+    return nodes;
+  })
+  return history;
+}
+
+function normalizeMatrix (data) {
+  const normalizedMatrix = data.nodes.map((node, i) => {
+    const outgoingLinks = data.links.filter(link => link.source === node.id);
+    const outGoingScores = data.nodes.map((node) => {
+      return outgoingLinks.find(link => link.target === node.id)?.value || 0;
+    });
+    const outGoingScoresSum = outGoingScores.reduce((sum, val) => sum + val, 0);
+    if (outGoingScoresSum === 0) {
+      return outGoingScores;
+    } else {
+      return outGoingScores.map(val => val / outGoingScoresSum);
+    }
   });
-  return balances;
+  return normalizedMatrix;
+}
+
+function normalizeVector (vector) {
+  const totalWeight = vector.reduce((sum, weight) => sum + weight, 0);
+  const normalizedVector = vector.map(w => w / totalWeight);
+  return normalizedVector;
+}
+
+function cloneScenario (scenario) {
+  return JSON.parse(JSON.stringify(scenario));
 }

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { area, stack } from 'd3-shape';
 
-const BalanceDistribution = ({ data, width = 800, height = 400 }) => {
+export const ScoreDistribution = ({ data, width = 800, height = 400 }) => {
   // Skip if no data
   if (!data.length) {
     return <div>No data available</div>;
@@ -63,7 +63,7 @@ const BalanceDistribution = ({ data, width = 800, height = 400 }) => {
     .y1(d => height * d[1]);
 
   return (
-    <div className="balance-distribution">
+    <div className="score-distribution">
       <svg width={width} height={height}>
         {/* Background grid */}
         <g className="grid">
@@ -127,5 +127,3 @@ const BalanceDistribution = ({ data, width = 800, height = 400 }) => {
     </div>
   );
 };
-
-export default BalanceDistribution;

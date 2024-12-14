@@ -29,3 +29,28 @@ export const BasicWithSybils = {
     { source: 'Sybil-5', target: 'Sybil', value: 1 },
   ],
 };
+
+export const LongChain = makeChain(10);
+
+export const Circle = makeCircle(10);
+
+function makeChain (count) {
+  const nodes = [];
+  const links = [];
+  const graph = { nodes, links };
+  for (let i = 0; i < count; i++) {
+    const isFirstNode = i === 0;
+    const score = isFirstNode ? 10 : 0;
+    nodes.push({ id: i, group: 1, score });
+    if (i > 0) {
+      links.push({ source: i - 1, target: i, value: 1 });
+    }
+  }
+  return graph;
+}
+
+function makeCircle (count) {
+  const graph = makeChain(count);
+  graph.links.push({ source: count - 1, target: 0, value: 1 });
+  return graph;
+}

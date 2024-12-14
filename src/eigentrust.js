@@ -9,13 +9,14 @@
 //   tNow = tNext;
 // until δ < error;
 
-export function eigentrustWithWeightedTrustedSet(
+export function eigentrustWithWeightedTrustedSet({
   trustMatrix,
   trustedSetWeights,
   alpha = 0.15,
   errorThreshold = 1e-6,
-  maxIterations = 1000
-) {
+  maxIterations = 1000,
+  getDefaultsForRow,
+}) {
   const numPeers = trustMatrix.length;
 
   // Ensure trustedSetWeights length matches the number of peers
@@ -26,7 +27,9 @@ export function eigentrustWithWeightedTrustedSet(
   // Normalize trusted set weights to sum to 1
   const normalizedTrustedSet = normalizeTrustedSetWeights(trustedSetWeights);
   // Normalize the trust matrix - each row should sum to 1
-  const normalizedTrustMatrix = normalizeTrustMatrix(trustMatrix, () => normalizedTrustedSet);
+  const innerDefaultRowFn = getDefaultsForRow || (() => normalizedTrustedSet);
+  const defaultRowFn = (rowIndex) => innerDefaultRowFn(rowIndex, normalizedTrustedSet);
+  const normalizedTrustMatrix = normalizeTrustMatrix(trustMatrix, defaultRowFn);
 
   // Initialize the trust vector t with the normalized trusted weights
   let tNow = [...normalizedTrustedSet];
@@ -60,21 +63,22 @@ export function eigentrustWithWeightedTrustedSet(
   return { result: tNow, steps, iterations: iteration };
 }
 
-function normalizeTrustMatrix (trustMatrix, getDefaultWeightsFor) {
+function normalizeTrustMatrix (trustMatrix, getDefaultsForRow) {
   return trustMatrix.map((row, rowIndex) => {
     const rowSum = row.reduce((sum, val) => sum + val, 0);
     return rowSum > 0 
       ? row.map(val => val / rowSum)
       // If the row sum is 0, use default weights for that row
-      : getDefaultWeightsFor(rowIndex);
+      : getDefaultsForRow(rowIndex);
   });
 }
 
 function normalizeTrustedSetWeights (trustedSetWeights) {
   const totalWeight = trustedSetWeights.reduce((sum, weight) => sum + weight, 0);
-  return totalWeight > 0
-    ? trustedSetWeights.map(w => w / totalWeight)
-    : trustedSetWeights.map(() => 1 / numPeers);
+  if (totalWeight <= 0) {
+    throw new Error("Total weight of trusted set must be greater than 0.");
+  }
+  return trustedSetWeights.map(w => w / totalWeight);
 }
 
 // Helper function to transpose a matrix

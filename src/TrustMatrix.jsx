@@ -20,60 +20,88 @@ export const TrustMatrix = ({ peers, trustMatrix }) => {
     <div>
       <h3>Normalized Trust Matrix</h3>
       <div style={{ display: "flex", justifyContent: "center" }}>
-        {/* Y-axis labels */}
-        <div style={{ display: "grid", gridTemplateRows: `repeat(${peers.length}, 30px)`, marginRight: "10px" }}>
-          {peers.map((peer, index) => (
-            <div key={`y-label-${index}`} style={{ lineHeight: "30px", textAlign: "right" }}>
-              {peer.id}
-            </div>
-          ))}
-        </div>
+        {/* Single unified grid with labels and matrix */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: `50px repeat(${peers.length}, 30px)`,
+            gridTemplateRows: `50px repeat(${peers.length}, 30px)`,
+            gap: "1px",
+          }}
+        >
+          {/* Top-left corner cell (empty) */}
+          <div style={{ width: "50px", height: "50px" }} />
 
-        {/* Grid with x-axis labels */}
-        <div>
-          {/* X-axis labels */}
-          <div style={{ display: "grid", gridTemplateColumns: `30px repeat(${peers.length}, 30px)`, justifyContent: 'center', marginBottom: "5px" }}>
-            {peers.map((peer, index) => (
+          {/* X-axis labels (top row) */}
+          {peers.map((peer, index) => (
+            <div
+              key={`x-label-${index}`}
+              style={{
+                width: "30px",
+                height: "50px",
+                display: "flex",
+                alignItems: "flex-end",
+                justifyContent: "flex-start",
+                overflow: "visible",
+              }}
+            >
               <div
-                key={`x-label-${index}`}
                 style={{
-                  transform: "translateX(24px) rotate(-45deg)",
+                  transform: "translateX(15px) rotate(-45deg)",
                   transformOrigin: "left bottom",
-                  wordWrap: 'unset',
-                  whiteSpace: 'nowrap',
-                  alignContent: 'end',
+                  whiteSpace: "nowrap",
                 }}
               >
                 {peer.id}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
 
-          {/* Trust matrix grid */}
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: `repeat(${peers.length}, 30px)`,
-              gap: "1px", // Optional: Adds space between cells
-            }}
-          >
-            {trustMatrix.flatMap((row, rowIndex) =>
-              row.map((value, colIndex) => (
+          {/* Matrix rows with Y-axis labels */}
+          {trustMatrix.map((row, rowIndex) => (
+            <>
+              {/* Y-axis label for this row */}
+              <div
+                key={`y-label-${rowIndex}`}
+                style={{
+                  width: "50px",
+                  height: "30px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "flex-end",
+                  overflow: "visible",
+                  whiteSpace: "nowrap",
+                  position: "relative",
+                }}
+              >
+                <span style={{ marginRight: "8px" }}>
+                  {peers[rowIndex].id}
+                </span>
+              </div>
+
+              {/* Matrix cells for this row */}
+              {row.map((value, colIndex) => (
                 <div
                   key={`${rowIndex}-${colIndex}`}
                   style={cellStyle(value)}
-                  title={`Trust: ${value.toFixed(2)}`} // Tooltip to show the exact trust value
+                  title={`Trust: ${value.toFixed(2)}`}
                 />
-              ))
-            )}
-          </div>
+              ))}
+            </>
+          ))}
         </div>
       </div>
 
-      <div style={{ marginTop: "10px" }}>
+      <div style={{ marginTop: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
         <strong>Legend:</strong>
-        <span style={{ display: "inline-block", backgroundColor: "white", width: "30px", height: "30px", marginLeft: "5px" }} /> 0
-        <span style={{ display: "inline-block", backgroundColor: "black", width: "30px", height: "30px", marginLeft: "5px" }} /> 1
+        <span>0</span>
+        <div style={{ 
+          width: "150px", 
+          height: "30px", 
+          background: "linear-gradient(to right, white, black)",
+          border: "1px solid #ccc"
+        }} />
+        <span>1</span>
       </div>
     </div>
   );

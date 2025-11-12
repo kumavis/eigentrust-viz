@@ -1,3 +1,4 @@
+import { Fragment } from 'react';
 import { getNodeColor } from './colorUtils';
 
 export const TrustMatrix = ({ peers, trustMatrix, colorMap = null }) => {
@@ -76,7 +77,7 @@ export const TrustMatrix = ({ peers, trustMatrix, colorMap = null }) => {
 
           {/* Matrix rows with Y-axis labels */}
           {trustMatrix.map((row, rowIndex) => (
-            <>
+            <Fragment key={`row-${rowIndex}`}>
               {/* Y-axis label for this row */}
               <div
                 key={`y-label-${rowIndex}`}
@@ -108,7 +109,7 @@ export const TrustMatrix = ({ peers, trustMatrix, colorMap = null }) => {
                   title={`Trust: ${value.toFixed(2)}`}
                 />
               ))}
-            </>
+            </Fragment>
           ))}
         </div>
       </div>

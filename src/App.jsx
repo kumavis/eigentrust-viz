@@ -2,8 +2,6 @@ import { useState, useMemo } from 'react'
 import { Link } from 'react-router-dom'
 import './App.css'
 
-import { eigentrustWithWeightedTrustedSet } from './eigentrust';
-
 import { Select, Slider } from './widgets';
 import { ScoreDistribution } from './ScoreDistribution';
 import { Graph } from './Graph';
@@ -11,17 +9,18 @@ import { TrustMatrix } from './TrustMatrix';
 
 import * as scenarios from './scenarios';
 
+import {
+  initialStateOptions,
+  cloneScenario,
+  normalizeMatrix,
+  normalizeVector,
+  calculateScoreHistory,
+} from './topologiesUtils';
+
 const fallbackRowScoreAlgos = {
   'TrustSet': (rowIndex, trustedSet) => trustedSet,
   'Uniform (PageRank)': (rowIndex, trustedSet) => trustedSet.map(() => 1 / trustedSet.length),
   'Self-Trust': (rowIndex, trustedSet) => trustedSet.map((_, i) => i === rowIndex ? 1 : 0),
-};
-
-
-const initialStateOptions = {
-  'First Node': (normalizedTrustedSet) => [1, ...Array(normalizedTrustedSet.length - 1).fill(0)],
-  'Uniform': (normalizedTrustedSet) => Array(normalizedTrustedSet.length).fill(1 / normalizedTrustedSet.length),
-  'Initial Trust Weights': (normalizedTrustedSet) => normalizedTrustedSet,
 };
 
 export default function App() {
@@ -290,55 +289,4 @@ export default function App() {
       </div>
     </div>
   )
-}
-
-function calculateScoreHistory (data, alpha, normalizedMatrix, normalizedTrustedSet, initialState, getDefaultsForRow) {
-  // calculate scores
-  const { result: scores, steps, iterations } = eigentrustWithWeightedTrustedSet({
-    trustMatrix: normalizedMatrix,
-    trustedSetWeights: normalizedTrustedSet,
-    alpha,
-    initialState,
-    getDefaultsForRow,
-  });
-
-  // After updating scores, add current balances to history
-  const history = stepsToNodeIdMapping(data, steps);
-  return { history, iterations };
-}
-
-function stepsToNodeIdMapping(data, steps) {
-  const history = steps.map(step => {
-    const nodes = data.nodes.map((node, i) => {
-      return step[i];
-    });
-    return nodes;
-  })
-  return history;
-}
-
-function normalizeMatrix (data) {
-  const normalizedMatrix = data.nodes.map((node, i) => {
-    const outgoingLinks = data.links.filter(link => link.source === node.id);
-    const outGoingScores = data.nodes.map((node) => {
-      return outgoingLinks.find(link => link.target === node.id)?.value || 0;
-    });
-    const outGoingScoresSum = outGoingScores.reduce((sum, val) => sum + val, 0);
-    if (outGoingScoresSum === 0) {
-      return outGoingScores;
-    } else {
-      return outGoingScores.map(val => val / outGoingScoresSum);
-    }
-  });
-  return normalizedMatrix;
-}
-
-function normalizeVector (vector) {
-  const totalWeight = vector.reduce((sum, weight) => sum + weight, 0);
-  const normalizedVector = vector.map(w => w / totalWeight);
-  return normalizedVector;
-}
-
-function cloneScenario (scenario) {
-  return JSON.parse(JSON.stringify(scenario));
 }

@@ -1,7 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef, useEffect } from 'react'
 import './App.css'
-
-import { eigentrustWithWeightedTrustedSet } from './eigentrust';
 
 import { Select, Slider } from './widgets';
 import { ScoreDistribution } from './ScoreDistribution';
@@ -12,16 +10,20 @@ import { getNodeColor } from './colorUtils';
 import * as scenarios from './scenarios';
 import { Link } from 'react-router-dom';
 
+import {
+  initialStateOptions,
+  cloneScenario,
+  normalizeMatrix,
+  normalizeVector,
+  calculateScoreHistory,
+  calculateSegmentLengths,
+  aggregateNodesByCommunity,
+} from './topologiesUtils';
+
 const fallbackRowScoreAlgos = {
   'TrustSet': (rowIndex, trustedSet) => trustedSet,
   'Uniform (PageRank)': (rowIndex, trustedSet) => trustedSet.map(() => 1 / trustedSet.length),
   'Self-Trust': (rowIndex, trustedSet) => trustedSet.map((_, i) => i === rowIndex ? 1 : 0),
-};
-
-const initialStateOptions = {
-  'First Node': (normalizedTrustedSet) => [1, ...Array(normalizedTrustedSet.length - 1).fill(0)],
-  'Uniform': (normalizedTrustedSet) => Array(normalizedTrustedSet.length).fill(1 / normalizedTrustedSet.length),
-  'Initial Trust Weights': (normalizedTrustedSet) => normalizedTrustedSet,
 };
 
 const scenarioPairs = [
@@ -465,122 +467,183 @@ function useSimulationData(data, alpha, initialStateName, getDefaultsForRow) {
   }, [data, alpha, initialStateName, getDefaultsForRow]);
 }
 
-function calculateScoreHistory (data, alpha, normalizedMatrix, normalizedTrustedSet, initialState, getDefaultsForRow) {
-  const { result: scores, steps, iterations } = eigentrustWithWeightedTrustedSet({
-    trustMatrix: normalizedMatrix,
-    trustedSetWeights: normalizedTrustedSet,
-    alpha,
-    initialState,
-    getDefaultsForRow,
-  });
-
-  const history = stepsToNodeIdMapping(data, steps);
-  return { history, iterations };
-}
-
-function stepsToNodeIdMapping(data, steps) {
-  const history = steps.map(step => {
-    const nodes = data.nodes.map((node, i) => {
-      return step[i];
-    });
-    return nodes;
-  })
-  return history;
-}
-
-function normalizeMatrix (data) {
-  const normalizedMatrix = data.nodes.map((node, i) => {
-    const outgoingLinks = data.links.filter(link => link.source === node.id);
-    const outGoingScores = data.nodes.map((node) => {
-      return outgoingLinks.find(link => link.target === node.id)?.value || 0;
-    });
-    const outGoingScoresSum = outGoingScores.reduce((sum, val) => sum + val, 0);
-    if (outGoingScoresSum === 0) {
-      return outGoingScores;
-    } else {
-      return outGoingScores.map(val => val / outGoingScoresSum);
-    }
-  });
-  return normalizedMatrix;
-}
-
-function normalizeVector (vector) {
-  const totalWeight = vector.reduce((sum, weight) => sum + weight, 0);
-  const normalizedVector = vector.map(w => w / totalWeight);
-  return normalizedVector;
-}
-
-function cloneScenario (scenario) {
-  return JSON.parse(JSON.stringify(scenario));
-}
-
-// Function to aggregate nodes by community, using group number set on node
-function aggregateNodesByCommunity(graphData) {
-  const graph = cloneScenario(graphData);
-  
-  // Find all unique groups
-  const groups = [...new Set(graph.nodes.map(n => n.group))];
-  
-  // Create node ID to group mapping
-  const nodeToGroup = {};
-  graph.nodes.forEach(node => {
-    nodeToGroup[node.id] = node.group;
-  });
-  
-  const newNodes = [];
-  const linkAggregation = {}; // Key: "sourceGroup->targetGroup", Value: sum of weights
-  
-  // Step 1: Create one node per community with summed initial trust weights
-  groups.forEach(group => {
-    const nodesInGroup = graph.nodes.filter(n => n.group === group);
-    const communityId = `Community ${group}`;
-    
-    // Sum initial trust weights
-    const totalScore = nodesInGroup.reduce((sum, n) => sum + n.score, 0);
-    
-    newNodes.push({
-      id: communityId,
-      group: group,
-      score: totalScore
-    });
-  });
-  
-  // Step 2: Aggregate links
-  // - If source and target are in same community: adds to self-loop (intra-community)
-  // - If source and target are in different communities: adds to cross-community link
-  graph.links.forEach(link => {
-    const sourceGroup = nodeToGroup[link.source];
-    const targetGroup = nodeToGroup[link.target];
-    
-    const linkKey = `${sourceGroup}->${targetGroup}`;
-    
-    if (!linkAggregation[linkKey]) {
-      linkAggregation[linkKey] = 0;
-    }
-    linkAggregation[linkKey] += link.value;
-  });
-  
-  // Step 3: Convert aggregated links to array format
-  const newLinks = [];
-  Object.entries(linkAggregation).forEach(([key, value]) => {
-    const [sourceGroup, targetGroup] = key.split('->').map(Number);
-    newLinks.push({
-      source: `Community ${sourceGroup}`,
-      target: `Community ${targetGroup}`,
-      value: value
-    });
-  });
-  
-  return { nodes: newNodes, links: newLinks };
-}
 
 function CommunitiesAggregationSection({ alpha, initialStateName, getDefaultsForRow }) {
   const originalData = useMemo(() => cloneScenario(scenarios.Communities), []);
 
+  // Get community structure to initialize sliders
+  const communityStructure = useMemo(() => {
+    const groups = [...new Set(originalData.nodes.map(n => n.group))];
+    const structure = {};
+    groups.forEach(group => {
+      const nodesInGroup = originalData.nodes.filter(n => n.group === group);
+      structure[group] = {
+        nodeCount: nodesInGroup.length,
+        nodeIds: nodesInGroup.map(n => n.id)
+      };
+    });
+    return structure;
+  }, [originalData]);
+
+  // Initialize slider state for each community
+  // For a community with n nodes, we need n-1 sliders
+  const [communitySliders, setCommunitySliders] = useState(() => {
+    const sliders = {};
+    Object.keys(communityStructure).forEach(group => {
+      const nodeCount = communityStructure[group].nodeCount;
+      // Initialize sliders evenly spaced
+      sliders[group] = Array(nodeCount - 1).fill(0).map((_, i) => (i + 1) / nodeCount);
+    });
+    return sliders;
+  });
+
+  // Optimization state
+  const [isOptimizing, setIsOptimizing] = useState(false);
+  const optimizationRef = useRef(null);
+
+  // Function to calculate loss given slider values
+  const calculateLoss = (sliders) => {
+    // Calculate importance weights from sliders
+    const weights = {};
+    Object.keys(sliders).forEach(group => {
+      weights[group] = calculateSegmentLengths(sliders[group]);
+    });
+
+    // Run aggregation with these weights
+    const aggregatedData = aggregateNodesByCommunity(originalData, weights);
+    
+    // Calculate normalized matrices and run simulations
+    const originalMatrix = normalizeMatrix(originalData);
+    const aggregatedMatrix = normalizeMatrix(aggregatedData);
+    
+    const originalTrustedSet = originalData.nodes.map(node => node.score);
+    const originalNormalizedTrustedSet = normalizeVector(originalTrustedSet);
+    const originalInitialState = initialStateOptions[initialStateName](originalNormalizedTrustedSet);
+    
+    const aggregatedTrustedSet = aggregatedData.nodes.map(node => node.score);
+    const aggregatedNormalizedTrustedSet = normalizeVector(aggregatedTrustedSet);
+    const aggregatedInitialState = initialStateOptions[initialStateName](aggregatedNormalizedTrustedSet);
+    
+    const originalResult = calculateScoreHistory(originalData, alpha, originalMatrix, originalNormalizedTrustedSet, originalInitialState, getDefaultsForRow);
+    const aggregatedResult = calculateScoreHistory(aggregatedData, alpha, aggregatedMatrix, aggregatedNormalizedTrustedSet, aggregatedInitialState, getDefaultsForRow);
+    
+    const originalFinal = originalResult.history[originalResult.history.length - 1];
+    const aggregatedFinal = aggregatedResult.history[aggregatedResult.history.length - 1];
+    
+    // Calculate loss: sum of squared differences for each community
+    const groups = [...new Set(originalData.nodes.map(n => n.group))];
+    let totalLoss = 0;
+    
+    groups.forEach(group => {
+      const communityId = `Community ${group}`;
+      
+      // Sum scores of all nodes in this community in original graph
+      const nodesInGroup = originalData.nodes
+        .map((n, idx) => ({ node: n, idx }))
+        .filter(({ node }) => node.group === group);
+      
+      const scoreBefore = nodesInGroup.reduce((sum, { idx }) => sum + (originalFinal[idx] || 0), 0);
+      
+      // Score in aggregated graph
+      const aggregatedIdx = aggregatedData.nodes.findIndex(n => n.id === communityId);
+      const scoreAfter = aggregatedFinal[aggregatedIdx] || 0;
+      
+      // Squared difference
+      const diff = scoreAfter - scoreBefore;
+      totalLoss += diff * diff;
+    });
+    
+    return totalLoss;
+  };
+
+  // Gradient descent optimization
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!isOptimizing) {
+      if (optimizationRef.current) {
+        cancelAnimationFrame(optimizationRef.current);
+        optimizationRef.current = null;
+      }
+      return;
+    }
+
+    const learningRate = 0.01;
+    const epsilon = 0.001; // For finite differences
+    const minSliderGap = 0.02; // Minimum gap between consecutive sliders
+
+    const optimizationStep = () => {
+      setCommunitySliders(currentSliders => {
+        const newSliders = { ...currentSliders };
+        
+        // Calculate current loss
+        const currentLoss = calculateLoss(currentSliders);
+        
+        // For each community
+        Object.keys(currentSliders).forEach(group => {
+          const sliders = currentSliders[group];
+          
+          // For each slider in this community
+          sliders.forEach((sliderValue, sliderIdx) => {
+            // Calculate gradient using finite difference
+            const perturbedSliders = { ...currentSliders };
+            perturbedSliders[group] = [...sliders];
+            perturbedSliders[group][sliderIdx] = Math.min(1, sliderValue + epsilon);
+            
+            const perturbedLoss = calculateLoss(perturbedSliders);
+            const gradient = (perturbedLoss - currentLoss) / epsilon;
+            
+            // Update slider value
+            let newValue = sliderValue - learningRate * gradient;
+            
+            // Clamp to [0, 1]
+            newValue = Math.max(0, Math.min(1, newValue));
+            
+            // Ensure proper ordering and minimum gaps
+            // Check constraint with previous slider
+            if (sliderIdx > 0) {
+              newValue = Math.max(newValue, newSliders[group][sliderIdx - 1] + minSliderGap);
+            }
+            // Check constraint with next slider
+            if (sliderIdx < sliders.length - 1) {
+              newValue = Math.min(newValue, newSliders[group][sliderIdx + 1] - minSliderGap);
+            }
+            
+            newSliders[group][sliderIdx] = newValue;
+          });
+        });
+        
+        return newSliders;
+      });
+      
+      // Continue optimization on next frame
+      if (isOptimizing) {
+        optimizationRef.current = requestAnimationFrame(optimizationStep);
+      }
+    };
+
+    // Start optimization
+    optimizationRef.current = requestAnimationFrame(optimizationStep);
+
+    return () => {
+      if (optimizationRef.current) {
+        cancelAnimationFrame(optimizationRef.current);
+      }
+    };
+  }, [isOptimizing, originalData, alpha, initialStateName, getDefaultsForRow]);
+
+  // Calculate importance weights from slider positions
+  const communityImportanceWeights = useMemo(() => {
+    const weights = {};
+    Object.keys(communitySliders).forEach(group => {
+      weights[group] = calculateSegmentLengths(communitySliders[group]);
+    });
+    return weights;
+  }, [communitySliders]);
+
   // Create aggregated version by combining nodes within each community
   const aggregatedData = useMemo(() => {
-    return aggregateNodesByCommunity(originalData);
-  }, [originalData]);
+    return aggregateNodesByCommunity(originalData, communityImportanceWeights);
+  }, [originalData, communityImportanceWeights]);
 
   const originalSimulation = useSimulationData(originalData, alpha, initialStateName, getDefaultsForRow);
   const aggregatedSimulation = useSimulationData(aggregatedData, alpha, initialStateName, getDefaultsForRow);
@@ -662,6 +725,12 @@ function CommunitiesAggregationSection({ alpha, initialStateName, getDefaultsFor
         aggregatedSimulation={aggregatedSimulation}
         originalColorMap={originalColorMap}
         communityScoreComparisons={communityScoreComparisons}
+        communityStructure={communityStructure}
+        communitySliders={communitySliders}
+        setCommunitySliders={setCommunitySliders}
+        communityImportanceWeights={communityImportanceWeights}
+        isOptimizing={isOptimizing}
+        setIsOptimizing={setIsOptimizing}
       />
     </>
   );
@@ -673,10 +742,37 @@ function CommunitiesPanel({
   originalSimulation, 
   aggregatedSimulation,
   originalColorMap,
-  communityScoreComparisons
+  communityScoreComparisons,
+  communityStructure,
+  communitySliders,
+  setCommunitySliders,
+  communityImportanceWeights,
+  isOptimizing,
+  setIsOptimizing
 }) {
   const { normalizedMatrix: aggregatedMatrix, history: aggregatedHistory, iterations: aggregatedIterations } = aggregatedSimulation;
   const { normalizedMatrix: originalMatrix, history: originalHistory, iterations: originalIterations } = originalSimulation;
+
+  // Collapseable section state
+  const [isRatiosExpanded, setIsRatiosExpanded] = useState(false);
+
+  // Handler to update a specific slider value
+  const updateSlider = (group, sliderIndex, value) => {
+    setCommunitySliders(prev => ({
+      ...prev,
+      [group]: prev[group].map((v, i) => i === sliderIndex ? value : v)
+    }));
+  };
+
+  // Calculate current loss for display
+  const currentLoss = useMemo(() => {
+    let totalLoss = 0;
+    communityScoreComparisons.forEach(({ before, after }) => {
+      const diff = after - before;
+      totalLoss += diff * diff;
+    });
+    return totalLoss;
+  }, [communityScoreComparisons]);
 
   return (
     <div style={{ 
@@ -691,6 +787,156 @@ function CommunitiesPanel({
       maxWidth: '1200px',
       margin: '0 auto'
     }}>
+      {/* Community Node Ratios Controls */}
+      <div style={{ 
+        display: 'flex',
+        flexDirection: 'column',
+        gap: '15px',
+        padding: '15px',
+        backgroundColor: 'rgba(74, 158, 255, 0.1)',
+        borderRadius: '8px',
+        border: '1px solid rgba(74, 158, 255, 0.3)'
+      }}>
+        <div 
+          style={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            cursor: 'pointer',
+            userSelect: 'none'
+          }}
+          onClick={() => setIsRatiosExpanded(!isRatiosExpanded)}
+        >
+          <h3 style={{ margin: '0', fontSize: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '0.8rem' }}>{isRatiosExpanded ? '▼' : '▶'}</span>
+            Community Node Ratios
+          </h3>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ fontSize: '0.8rem', color: '#aaa' }}>
+              Loss: {currentLoss.toFixed(6)}
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                // Reset all sliders to evenly spaced defaults
+                const resetSliders = {};
+                Object.keys(communityStructure).forEach(group => {
+                  const nodeCount = communityStructure[group].nodeCount;
+                  resetSliders[group] = Array(nodeCount - 1).fill(0).map((_, i) => (i + 1) / nodeCount);
+                });
+                setCommunitySliders(resetSliders);
+              }}
+              disabled={isOptimizing}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: isOptimizing ? '#555' : '#666',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: isOptimizing ? 'not-allowed' : 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: 'bold',
+                transition: 'background-color 0.2s',
+                opacity: isOptimizing ? 0.5 : 1
+              }}
+            >
+              Reset to Defaults
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsOptimizing(!isOptimizing);
+              }}
+              style={{
+                padding: '8px 16px',
+                backgroundColor: isOptimizing ? '#ff6b6b' : '#4a9eff',
+                color: 'white',
+                border: 'none',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                fontSize: '0.85rem',
+                fontWeight: 'bold',
+                transition: 'background-color 0.2s'
+              }}
+            >
+              {isOptimizing ? 'Stop Optimization' : 'Optimize Importance Ratios'}
+            </button>
+          </div>
+        </div>
+        
+        {isRatiosExpanded && (
+          <>
+            <div style={{ fontSize: '0.85rem', color: '#aaa', textAlign: 'center' }}>
+              Adjust the importance of nodes within each community. These weights affect how links are aggregated.
+              {isOptimizing && (
+                <div style={{ marginTop: '5px', color: '#4a9eff', fontStyle: 'italic' }}>
+                  🔄 Running gradient descent to minimize aggregation error...
+                </div>
+              )}
+            </div>
+        
+        {Object.keys(communityStructure).sort((a, b) => Number(a) - Number(b)).map(group => {
+          const { nodeCount, nodeIds } = communityStructure[group];
+          const sliders = communitySliders[group];
+          const weights = communityImportanceWeights[group];
+          
+          return (
+            <div key={group} style={{
+              padding: '12px',
+              backgroundColor: 'rgba(0, 0, 0, 0.2)',
+              borderRadius: '6px'
+            }}>
+              <div style={{ fontWeight: 'bold', marginBottom: '8px', fontSize: '0.9rem' }}>
+                Community {group} ({nodeCount} nodes)
+              </div>
+              
+              {/* Display node IDs with their importance weights */}
+              <div style={{ 
+                display: 'flex', 
+                justifyContent: 'space-between',
+                marginBottom: '10px',
+                fontSize: '0.8rem',
+                color: '#bbb'
+              }}>
+                {nodeIds.map((nodeId, idx) => (
+                  <div key={nodeId} style={{ textAlign: 'center' }}>
+                    <div>{nodeId}</div>
+                    <div style={{ fontWeight: 'bold', color: '#fff' }}>
+                      {(weights[idx] * 100).toFixed(1)}%
+                    </div>
+                  </div>
+                ))}
+              </div>
+              
+              {/* Sliders for n-1 split points */}
+              {sliders.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {sliders.map((sliderValue, idx) => (
+                    <div key={idx} style={{ 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '10px',
+                      opacity: isOptimizing ? 0.5 : 1,
+                      pointerEvents: isOptimizing ? 'none' : 'auto'
+                    }}>
+                      <span style={{ fontSize: '0.75rem', minWidth: '80px' }}>
+                        Split {idx + 1}: {sliderValue.toFixed(3)}
+                      </span>
+                      <Slider 
+                        value={sliderValue} 
+                        setValue={(val) => updateSlider(group, idx, val)}
+                        step={0.01}
+                      />
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+          </>
+        )}
+      </div>
       {/* Score Distributions - Side by Side */}
       <div style={{ 
         display: 'grid', 

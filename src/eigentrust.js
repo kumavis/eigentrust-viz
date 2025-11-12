@@ -13,6 +13,7 @@ export function eigentrustWithWeightedTrustedSet({
   trustMatrix,
   trustedSetWeights,
   alpha = 0.15,
+  initialState,
   errorThreshold = 1e-6,
   maxIterations = 1000,
   getDefaultsForRow,
@@ -31,8 +32,8 @@ export function eigentrustWithWeightedTrustedSet({
   const defaultRowFn = (rowIndex) => innerDefaultRowFn(rowIndex, normalizedTrustedSet);
   const normalizedTrustMatrix = normalizeTrustMatrix(trustMatrix, defaultRowFn);
 
-  // Initialize the trust vector t with the normalized trusted weights
-  let tNow = [...normalizedTrustedSet];
+  // Initialize the trust vector t with the provided initial state or default to normalized trusted set
+  let tNow = initialState ? [...initialState] : [...normalizedTrustedSet];
   let tPrev = [...tNow];
   let steps = [tNow];
 

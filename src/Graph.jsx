@@ -1,6 +1,7 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import ForceGraph2D from 'react-force-graph-2d';
 import forceLinks from './force-links';
+import { getNodeColor } from './colorUtils';
 
 const useMemoWithPrevious = (fn, deps) => {
   const previous = useRef(null);
@@ -81,7 +82,35 @@ const fixedCenterForce = function(x, y, z) {
 
 export const Graph = ({ data }) => {
   const fgRef = useRef();
+  const containerRef = useRef();
   const dataCopy = useGraphData(data);
+  const [dimensions, setDimensions] = useState({ width: 600, height: 400 });
+  
+  // Generate consistent colors for nodes
+  const nodeColorMap = useMemo(() => {
+    const colorMap = {};
+    data.nodes.forEach((node, index) => {
+      colorMap[node.id] = getNodeColor(index, data.nodes.length);
+    });
+    return colorMap;
+  }, [data.nodes]);
+  
+  // Measure container dimensions
+  useEffect(() => {
+    if (!containerRef.current) return;
+    
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        const { width, height } = containerRef.current.getBoundingClientRect();
+        setDimensions({ width, height });
+      }
+    };
+    
+    updateDimensions();
+    window.addEventListener('resize', updateDimensions);
+    
+    return () => window.removeEventListener('resize', updateDimensions);
+  }, []);
 
   useEffect(() => {
     if (fgRef.current) {
@@ -108,32 +137,51 @@ export const Graph = ({ data }) => {
       // console.log('center y', fg.d3Force('center').y());
       // console.log('center z', fg.d3Force('center').z());
       // console.log('center strength', fg.d3Force('center').strength());
+      
+      // Auto-fit to view after a short delay to allow initial layout
+      setTimeout(() => {
+        fg.zoomToFit(400, 50); // 400ms transition, 50px padding
+      }, 100);
     }
   }, []);
   
+  // Re-fit when data changes
+  useEffect(() => {
+    if (fgRef.current) {
+      const fg = fgRef.current;
+      // Wait for layout to stabilize before fitting
+      const timer = setTimeout(() => {
+        fg.zoomToFit(400, 50);
+      }, 1000);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [dataCopy]);
+  
   return (
-    <div style={{ height: '300px' }}>
+    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', backgroundColor: '#2d2d2d' }}>
       <ForceGraph2D
         ref={fgRef}
         graphData={dataCopy}
-        height={600}
+        width={dimensions.width}
+        height={dimensions.height}
+        backgroundColor="#2d2d2d"
         nodeLabel="id"
-        nodeAutoColorBy="group"
+        nodeColor={node => nodeColorMap[node.id]}
         linkDirectionalArrowLength={3.5}
         linkDirectionalArrowRelPos={1}
+        nodeRelSize={8}
+        linkWidth={2}
         nodeCanvasObject={(node, ctx, globalScale) => {
           const label = `${node.id} (${node.score.toFixed(2)})`;
-          const fontSize = 12/globalScale;
-          ctx.font = `${fontSize}px Sans-Serif`;
+          const fontSize = 14/globalScale;
+          ctx.font = `bold ${fontSize}px Sans-Serif`;
           const textWidth = ctx.measureText(label).width;
           const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
 
-          ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
-          ctx.fillRect(node.x - bckgDimensions[0] / 2, node.y - bckgDimensions[1] / 2, ...bckgDimensions);
-
           ctx.textAlign = 'center';
           ctx.textBaseline = 'middle';
-          ctx.fillStyle = node.color;
+          ctx.fillStyle = nodeColorMap[node.id];
           ctx.fillText(label, node.x, node.y);
 
           node.__bckgDimensions = bckgDimensions;

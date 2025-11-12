@@ -1,7 +1,8 @@
 import React, { useMemo } from 'react';
 import { area, stack } from 'd3-shape';
+import { getNodeColor } from './colorUtils';
 
-export const ScoreDistribution = ({ data, width = 800, height = 400 }) => {
+export const ScoreDistribution = ({ data, iterations, width = 1200, height = 200 }) => {
   // Skip if no data
   if (!data.length) {
     return <div>No data available</div>;
@@ -43,11 +44,7 @@ export const ScoreDistribution = ({ data, width = 800, height = 400 }) => {
   // Generate consistent colors based on node names
   const colors = useMemo(() => {
     const keys = Object.keys(lastDataPoint);
-    return keys.map((key, index) => {
-      // Use HSL to generate evenly spaced colors
-      const hue = (index * 360) / keys.length;
-      return `hsl(${hue}, 70%, 50%)`;
-    });
+    return keys.map((key, index) => getNodeColor(index, keys.length));
   }, [data[data.length - 1]]);
 
   // Generate area paths with curved interpolation
@@ -63,8 +60,15 @@ export const ScoreDistribution = ({ data, width = 800, height = 400 }) => {
     .y1(d => height * d[1]);
 
   return (
-    <div className="score-distribution">
-      <svg width={width} height={height}>
+    <div className="score-distribution" style={{ 
+      display: 'flex', 
+      flexDirection: 'column',
+      justifyContent: 'center', 
+      alignItems: 'center',
+      width: '100%',
+      overflow: 'visible'
+    }}>
+      <svg width={width} height={height} style={{ maxWidth: '100%' }} viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="xMidYMid meet">
         {/* Background grid */}
         <g className="grid">
           {[0.2, 0.4, 0.6, 0.8].map(y => (
@@ -94,14 +98,14 @@ export const ScoreDistribution = ({ data, width = 800, height = 400 }) => {
         ))}
 
         {/* Legend */}
-        <g className="legend" transform={`translate(${width - 120}, 20)`}>
+        {/* <g className="legend" transform={`translate(${width - 120}, 20)`}>
           {stackedData.map((series, i) => (
             <g key={series.key} transform={`translate(0, ${i * 20})`}>
               <rect width={15} height={15} fill={colors[i]} />
               <text x={20} y={12} fontSize="12px">{series.key}</text>
             </g>
           ))}
-        </g>
+        </g> */}
 
         {/* Percentage labels */}
         {normalizedData[normalizedData.length - 1] && 
@@ -124,6 +128,19 @@ export const ScoreDistribution = ({ data, width = 800, height = 400 }) => {
           })
         }
       </svg>
+      {iterations !== undefined && (
+        <div style={{ 
+          fontSize: '0.75rem', 
+          marginTop: '2px',
+          color: '#999',
+          width: '100%',
+          maxWidth: width,
+          textAlign: 'right',
+          paddingRight: '10px'
+        }}>
+          Converged in {iterations} iteration{iterations !== 1 ? 's' : ''}
+        </div>
+      )}
     </div>
   );
 };

@@ -17,10 +17,17 @@ const fallbackRowScoreAlgos = {
 };
 
 
+const initialStateOptions = {
+  'First Node': (normalizedTrustedSet) => [1, ...Array(normalizedTrustedSet.length - 1).fill(0)],
+  'Uniform': (normalizedTrustedSet) => Array(normalizedTrustedSet.length).fill(1 / normalizedTrustedSet.length),
+  'Initial Trust Weights': (normalizedTrustedSet) => normalizedTrustedSet,
+};
+
 export default function App() {
   // Algorithm parameters
   const [alpha, setAlpha] = useState(0.15);
   const [fallbackAlgoName, setFallbackAlgoName] = useState('TrustSet');
+  const [initialStateName, setInitialStateName] = useState('Initial Trust Weights');
   const getDefaultsForRow = fallbackRowScoreAlgos[fallbackAlgoName];
 
   // Scenario
@@ -37,15 +44,17 @@ export default function App() {
     const normalizedMatrix = normalizeMatrix(data);
     const trustedSet = data.nodes.map(node => node.score);
     const normalizedTrustedSet = normalizeVector(trustedSet);
+    const initialState = initialStateOptions[initialStateName](normalizedTrustedSet);
   
-    const history = calculateScoreHistory(data, alpha, normalizedMatrix, normalizedTrustedSet, getDefaultsForRow);
+    const { history, iterations } = calculateScoreHistory(data, alpha, normalizedMatrix, normalizedTrustedSet, initialState, getDefaultsForRow);
     return {
       normalizedMatrix,
       normalizedTrustedSet,
       history,
+      iterations,
     };
-  }, [data, alpha, getDefaultsForRow]);
-  const { normalizedMatrix, normalizedTrustedSet, history: scoreHistory } = simulationData;
+  }, [data, alpha, initialStateName, getDefaultsForRow]);
+  const { normalizedMatrix, normalizedTrustedSet, history: scoreHistory, iterations } = simulationData;
 
   // const addNode = () => {
   //   const newData = { ...data };
@@ -85,54 +94,188 @@ export default function App() {
   // };
 
   return (
-    <>
-      <h1>EigenTrust</h1>
-      <div className="read-the-docs">
-        <div style={{ width: "300px", margin: "20px auto", textAlign: "center" }}>
-          <Slider value={alpha} setValue={setAlpha} step={0.05}/>
-          <div>Balance Weight: {alpha.toFixed(2)}</div>
-          <span>Fallback Peer Scoring Algorithm:</span>
-          <Select value={fallbackAlgoName} setValue={setFallbackAlgoName} options={Object.keys(fallbackRowScoreAlgos)} />
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      gap: '15px',
+      width: '100%',
+      maxWidth: '100%',
+      padding: '15px',
+      overflowX: 'hidden'
+    }}>
+      {/* Title */}
+      <h1 style={{ textAlign: 'center', margin: '0', fontSize: '1.8rem', flexShrink: 0 }}>EigenTrust</h1>
+      
+      {/* Introduction */}
+      <div style={{ 
+        maxWidth: '800px', 
+        margin: '0 auto',
+        padding: '15px',
+        backgroundColor: 'rgba(100, 100, 100, 0.1)',
+        borderRadius: '8px',
+        fontSize: '0.95rem',
+        lineHeight: '1.6',
+        flexShrink: 0
+      }}>
+        <p style={{ margin: '0 0 10px 0' }}>
+          <strong>EigenTrust</strong> is a reputation algorithm designed for peer-to-peer networks. 
+          It calculates trust scores for nodes based on how they rate each other.
+        </p>
+        <p style={{ margin: '0' }}>
+          <strong>Inputs:</strong> A trust matrix (who trusts whom and how much) and initial trust weights for each node. 
+          <br />
+          <strong> Output:</strong> A global trust score for each node, reflecting the network's collective opinion.
+        </p>
+      </div>
+
+      {/* Score Distribution */}
+      <div style={{ flexShrink: 0, overflow: 'visible' }}>
+        <ScoreDistribution data={scoreHistory} iterations={iterations} />
+        <p style={{ 
+          textAlign: 'center', 
+          fontSize: '0.85rem', 
+          color: '#aaa', 
+          margin: '5px 0 0 0',
+          maxWidth: '800px',
+          marginLeft: 'auto',
+          marginRight: 'auto'
+        }}>
+          This graph shows how trust scores evolve and converge over iterations. The y-axis shows the trust score for each node. The right side of the graph shows the final trust scores for each node as proportion of the total trust.
+        </p>
+      </div>
+
+      <h3 style={{ margin: '0 0 10px 0', flexShrink: 0, textAlign: 'center' }}>Trust Graph</h3>
+
+      {/* Trust Graph Explanations */}
+      <div style={{ 
+        maxWidth: '900px', 
+        margin: '0 auto 15px auto',
+        padding: '0 15px',
+        fontSize: '0.9rem',
+        lineHeight: '1.6',
+        color: '#ccc',
+        flexShrink: 0
+      }}>
+        <p style={{ margin: '0 0 10px 0' }}>
+          The trust graph is represented as a <strong>row stochastic matrix</strong>, 
+          meaning each row sums to 1. This means each node distributes its total trust (100%) among the other nodes it trusts. 
+          The values in the matrix are weights indicating how much trust flows from one node to another.
+        </p>
+        <p style={{ margin: '0 0 10px 0' }}>
+          <strong>Trust Matrix (left):</strong> Each row represents a node, each column represents a potential trustee. 
+          The cell at row <em>i</em>, column <em>j</em> shows how much node <em>i</em> trusts node <em>j</em>. 
+          Darker cells indicate higher trust values. Each row sums to 1 (normalized) or 0 if that node trusts no one.
+        </p>
+        <p style={{ margin: '0' }}>
+          <strong>Network Topology (right):</strong> Shows the trust relationships as a directed graph. 
+          Arrows point from the truster to the trustee. Node labels display the initial trust weights.
+        </p>
+      </div>
+
+      {/* Graph Selection */}
+      <div style={{ 
+        display: 'flex', 
+        gap: '10px', 
+        justifyContent: 'center',
+        alignItems: 'center',
+        flexShrink: 0
+      }}>
+        <span style={{ fontWeight: 'bold' }}>Scenario:</span>
+        <Select value={scenarioName} setValue={setScenarioName} options={Object.keys(scenarios)} />
+      </div>
+
+      {/* Visualizations Row */}
+      <div style={{ 
+        display: 'flex', 
+        gap: '15px',
+        maxHeight: '540px',
+        width: '100%',
+        overflow: 'hidden'
+      }}>
+        {/* Matrix on the left */}
+        <div style={{ 
+          flex: '1', 
+          minWidth: '0',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'auto',
+          maxHeight: '540px'
+        }}>
+          <TrustMatrix peers={data.nodes} trustMatrix={normalizedMatrix} />
         </div>
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', marginTop: '10px' }}>
-          <span>Scenario:</span>
-          <Select value={scenarioName} setValue={setScenarioName} options={Object.keys(scenarios)} />
-          {/* <button onClick={addNode}>
-            Add Node
-          </button>
-          <button onClick={addRandomLink}>
-            Add Random Link
-          </button> */}
-          {/* <button onClick={resetSimulation} style={{ backgroundColor: '#ff4444' }}>
-            Reset
-          </button> */}
+        
+        {/* Graph on the right */}
+        <div style={{ 
+          flex: '1', 
+          minWidth: '0',
+          display: 'flex',
+          flexDirection: 'column',
+          overflow: 'hidden',
+          maxHeight: '540px'
+        }}>
+          <Graph data={data} />
         </div>
       </div>
-      <div style={{ marginTop: '20px' }}>
-        <ScoreDistribution data={scoreHistory} />
+
+      {/* Parameterization Controls */}
+      <div style={{ 
+        display: 'flex', 
+        flexDirection: 'column',
+        gap: '10px',
+        padding: '15px',
+        border: '1px solid #444',
+        borderRadius: '8px',
+        flexShrink: 0
+      }}>
+        <h2 style={{ margin: '0 0 5px 0', fontSize: '1rem' }}>Parameterization Controls</h2>
+        <div style={{ 
+          display: 'flex', 
+          gap: '15px', 
+          justifyContent: 'space-between',
+          alignItems: 'flex-start'
+        }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: '1', minWidth: '0' }}>
+            <div style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Balance Weight (α): {alpha.toFixed(2)}</div>
+            <Slider value={alpha} setValue={setAlpha} step={0.05}/>
+            <div style={{ fontSize: '0.8rem', color: '#aaa', lineHeight: '1.3' }}>
+              Controls the balance between peer opinions and pre-trusted nodes. 
+              Higher values give more weight to pre-trusted nodes.
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: '1', minWidth: '0' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Fallback Peer Scoring Algorithm:</span>
+            <Select value={fallbackAlgoName} setValue={setFallbackAlgoName} options={Object.keys(fallbackRowScoreAlgos)} />
+            <div style={{ fontSize: '0.8rem', color: '#aaa', lineHeight: '1.3' }}>
+              When a node trusts no one, this determines their default trust distribution: 
+              use initial trust weights, distribute equally (PageRank), or trust only themselves.
+            </div>
+          </div>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px', flex: '1', minWidth: '0' }}>
+            <span style={{ fontSize: '0.85rem', fontWeight: 'bold' }}>Initial State:</span>
+            <Select value={initialStateName} setValue={setInitialStateName} options={Object.keys(initialStateOptions)} />
+            <div style={{ fontSize: '0.8rem', color: '#aaa', lineHeight: '1.3' }}>
+              The starting trust distribution. Doesn't affect the final result but can impact iterations required for convergence.
+            </div>
+          </div>
+        </div>
       </div>
-      <div>
-        <TrustMatrix peers={data.nodes} trustMatrix={normalizedMatrix} />
-      </div>
-      <div className="card">
-        <Graph data={data} />
-      </div>
-    </>
+    </div>
   )
 }
 
-function calculateScoreHistory (data, alpha, normalizedMatrix, normalizedTrustedSet, getDefaultsForRow) {
+function calculateScoreHistory (data, alpha, normalizedMatrix, normalizedTrustedSet, initialState, getDefaultsForRow) {
   // calculate scores
   const { result: scores, steps, iterations } = eigentrustWithWeightedTrustedSet({
     trustMatrix: normalizedMatrix,
     trustedSetWeights: normalizedTrustedSet,
     alpha,
+    initialState,
     getDefaultsForRow,
   });
 
   // After updating scores, add current balances to history
   const history = stepsToNodeIdMapping(data, steps);
-  return history;
+  return { history, iterations };
 }
 
 function stepsToNodeIdMapping(data, steps) {

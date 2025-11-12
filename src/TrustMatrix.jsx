@@ -1,8 +1,12 @@
+import { getNodeColor } from './colorUtils';
 
 export const TrustMatrix = ({ peers, trustMatrix }) => {
   if (trustMatrix.length !== peers.length || trustMatrix.some(row => row.length !== peers.length)) {
     throw new Error("Trust matrix dimensions must match the number of peers.");
   }
+
+  // Generate colors for each peer
+  const peerColors = peers.map((peer, index) => getNodeColor(index, peers.length));
 
   const cellStyle = (value) => {
     // Black at full trust (1), white at no trust (0)
@@ -17,9 +21,15 @@ export const TrustMatrix = ({ peers, trustMatrix }) => {
   };
 
   return (
-    <div>
-      <h3>Normalized Trust Matrix</h3>
-      <div style={{ display: "flex", justifyContent: "center" }}>
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column', 
+      alignItems: 'center',
+      width: '100%',
+      height: '100%'
+    }}>
+
+      <div style={{ display: "flex", justifyContent: "center", flexShrink: 0 }}>
         {/* Single unified grid with labels and matrix */}
         <div
           style={{
@@ -50,6 +60,8 @@ export const TrustMatrix = ({ peers, trustMatrix }) => {
                   transform: "translateX(15px) rotate(-45deg)",
                   transformOrigin: "left bottom",
                   whiteSpace: "nowrap",
+                  color: peerColors[index],
+                  fontWeight: "bold",
                 }}
               >
                 {peer.id}
@@ -74,7 +86,11 @@ export const TrustMatrix = ({ peers, trustMatrix }) => {
                   position: "relative",
                 }}
               >
-                <span style={{ marginRight: "8px" }}>
+                <span style={{ 
+                  marginRight: "8px",
+                  color: peerColors[rowIndex],
+                  fontWeight: "bold"
+                }}>
                   {peers[rowIndex].id}
                 </span>
               </div>
@@ -92,7 +108,7 @@ export const TrustMatrix = ({ peers, trustMatrix }) => {
         </div>
       </div>
 
-      <div style={{ marginTop: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px" }}>
+      <div style={{ marginTop: "10px", display: "flex", alignItems: "center", justifyContent: "center", gap: "10px", flexShrink: 0 }}>
         <strong>Legend:</strong>
         <span>0</span>
         <div style={{ 

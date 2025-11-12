@@ -1,12 +1,17 @@
 import { getNodeColor } from './colorUtils';
 
-export const TrustMatrix = ({ peers, trustMatrix }) => {
+export const TrustMatrix = ({ peers, trustMatrix, colorMap = null }) => {
   if (trustMatrix.length !== peers.length || trustMatrix.some(row => row.length !== peers.length)) {
     throw new Error("Trust matrix dimensions must match the number of peers.");
   }
 
   // Generate colors for each peer
-  const peerColors = peers.map((peer, index) => getNodeColor(index, peers.length));
+  const peerColors = peers.map((peer, index) => {
+    if (colorMap && colorMap[index.toString()]) {
+      return colorMap[index.toString()];
+    }
+    return getNodeColor(index, peers.length);
+  });
 
   const cellStyle = (value) => {
     // Black at full trust (1), white at no trust (0)
@@ -64,7 +69,7 @@ export const TrustMatrix = ({ peers, trustMatrix }) => {
                   fontWeight: "bold",
                 }}
               >
-                {peer.id}
+                {peer.originalId || peer.id}
               </div>
             </div>
           ))}
@@ -91,7 +96,7 @@ export const TrustMatrix = ({ peers, trustMatrix }) => {
                   color: peerColors[rowIndex],
                   fontWeight: "bold"
                 }}>
-                  {peers[rowIndex].id}
+                  {peers[rowIndex].originalId || peers[rowIndex].id}
                 </span>
               </div>
 

@@ -113,6 +113,82 @@ export const DiamondDAG = {
   ],
 };
 
+// Collapsed Diamond: A -> BC (merged), BC -> D
+// This simulates what happens when B and C are actually the same entity (Sybil attack)
+export const CollapsedDiamond = {
+  nodes: [
+    { id: 'A', group: 1, score: 10 },
+    { id: 'BC', group: 2, score: 0 }, // B and C merged
+    { id: 'D', group: 1, score: 0 },
+  ],
+  links: [
+    { source: 'A', target: 'BC', value: 1 }, // Combined trust from A
+    { source: 'BC', target: 'D', value: 1 }, // Combined flow to D
+  ],
+};
+
+// Star pattern with center node joined
+export const StarJoined = {
+  nodes: [
+    { id: 'A', group: 1, score: 10 },
+    { id: 'Center', group: 2, score: 0 },
+    { id: 'D', group: 1, score: 0 },
+    { id: 'E', group: 1, score: 0 },
+  ],
+  links: [
+    { source: 'A', target: 'Center', value: 1 },
+    { source: 'Center', target: 'D', value: 0.5 },
+    { source: 'Center', target: 'E', value: 0.5 },
+  ],
+};
+
+// Star pattern with center node split
+export const StarSplit = {
+  nodes: [
+    { id: 'A', group: 1, score: 10 },
+    { id: 'Center', group: 2, score: 0, originalId: 'Center' }, // First half
+    { id: 'Center2', group: 2, score: 0, originalId: 'Center' }, // Second half (will display as "Center")
+    { id: 'D', group: 1, score: 0 },
+    { id: 'E', group: 1, score: 0 },
+  ],
+  links: [
+    { source: 'A', target: 'Center', value: 0.5 },
+    { source: 'A', target: 'Center2', value: 0.5 },
+    { source: 'Center', target: 'D', value: 0.5 },
+    { source: 'Center', target: 'E', value: 0.5 },
+    { source: 'Center2', target: 'D', value: 0.5 },
+    { source: 'Center2', target: 'E', value: 0.5 },
+  ],
+};
+
+// Chain with middle node joined
+export const ChainJoined = {
+  nodes: [
+    { id: 'A', group: 1, score: 10 },
+    { id: 'BC', group: 2, score: 0 },
+    { id: 'D', group: 1, score: 0 },
+  ],
+  links: [
+    { source: 'A', target: 'BC', value: 1 },
+    { source: 'BC', target: 'D', value: 1 },
+  ],
+};
+
+// Chain with middle node split
+export const ChainSplit = {
+  nodes: [
+    { id: 'A', group: 1, score: 10 },
+    { id: 'B', group: 2, score: 0 },
+    { id: 'C', group: 2, score: 0 },
+    { id: 'D', group: 1, score: 0 },
+  ],
+  links: [
+    { source: 'A', target: 'B', value: 1 },
+    { source: 'B', target: 'C', value: 1 },
+    { source: 'C', target: 'D', value: 1 },
+  ],
+};
+
 // BasicWithSybils variant where the primary Sybil has some initial balance
 export const SybilsWithBalance = {
   nodes: [

@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { area, stack } from 'd3-shape';
 import { getNodeColor } from './colorUtils';
 
-export const ScoreDistribution = ({ data, iterations, width = 1200, height = 200 }) => {
+export const ScoreDistribution = ({ data, iterations, width = 1200, height = 200, colorMap = null }) => {
   // Skip if no data
   if (!data.length) {
     return <div>No data available</div>;
@@ -44,8 +44,12 @@ export const ScoreDistribution = ({ data, iterations, width = 1200, height = 200
   // Generate consistent colors based on node names
   const colors = useMemo(() => {
     const keys = Object.keys(lastDataPoint);
+    if (colorMap) {
+      // Use provided color map
+      return keys.map((key, index) => colorMap[key] || getNodeColor(index, keys.length));
+    }
     return keys.map((key, index) => getNodeColor(index, keys.length));
-  }, [data[data.length - 1]]);
+  }, [data[data.length - 1], colorMap]);
 
   // Generate area paths with curved interpolation
   const areaGenerator = area()

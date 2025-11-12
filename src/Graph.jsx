@@ -80,7 +80,7 @@ const fixedCenterForce = function(x, y, z) {
 }
 
 
-export const Graph = ({ data }) => {
+export const Graph = ({ data, onNodeClick, colorMap = null }) => {
   const fgRef = useRef();
   const containerRef = useRef();
   const dataCopy = useGraphData(data);
@@ -88,12 +88,15 @@ export const Graph = ({ data }) => {
   
   // Generate consistent colors for nodes
   const nodeColorMap = useMemo(() => {
-    const colorMap = {};
+    if (colorMap) {
+      return colorMap;
+    }
+    const defaultColorMap = {};
     data.nodes.forEach((node, index) => {
-      colorMap[node.id] = getNodeColor(index, data.nodes.length);
+      defaultColorMap[node.id] = getNodeColor(index, data.nodes.length);
     });
-    return colorMap;
-  }, [data.nodes]);
+    return defaultColorMap;
+  }, [data.nodes, colorMap]);
   
   // Measure container dimensions
   useEffect(() => {
@@ -172,8 +175,11 @@ export const Graph = ({ data }) => {
         linkDirectionalArrowRelPos={1}
         nodeRelSize={8}
         linkWidth={2}
+        onNodeClick={onNodeClick}
         nodeCanvasObject={(node, ctx, globalScale) => {
-          const label = `${node.id} (${node.score.toFixed(2)})`;
+          // Use original ID if this is a split node
+          const displayName = node.originalId || node.id;
+          const label = `${displayName} (${node.score.toFixed(2)})`;
           const fontSize = 14/globalScale;
           ctx.font = `bold ${fontSize}px Sans-Serif`;
           const textWidth = ctx.measureText(label).width;

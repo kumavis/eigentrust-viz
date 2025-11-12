@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { Link } from 'react-router-dom'
 import './App.css'
 
 import { eigentrustWithWeightedTrustedSet } from './eigentrust';
@@ -181,7 +182,13 @@ export default function App() {
         flexShrink: 0
       }}>
         <span style={{ fontWeight: 'bold' }}>Scenario:</span>
-        <Select value={scenarioName} setValue={setScenarioName} options={Object.keys(scenarios)} />
+        <Select 
+          value={scenarioName} 
+          setValue={setScenarioName} 
+          options={Object.keys(scenarios).filter(s => 
+            !['CollapsedDiamond', 'StarJoined', 'StarSplit'].includes(s)
+          )} 
+        />
       </div>
 
       {/* Visualizations Row */}
@@ -258,6 +265,28 @@ export default function App() {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* Link to topology comparison */}
+      <div style={{ 
+        textAlign: 'center', 
+        marginTop: '20px',
+        paddingTop: '20px',
+        borderTop: '1px solid #444'
+      }}>
+        <Link to="/topologies" style={{ 
+          color: '#4a9eff', 
+          textDecoration: 'none', 
+          fontSize: '1rem',
+          fontWeight: 'bold',
+          padding: '10px 20px',
+          border: '2px solid #4a9eff',
+          borderRadius: '6px',
+          display: 'inline-block',
+          transition: 'all 0.2s'
+        }}>
+          Compare Topologies →
+        </Link>
       </div>
     </div>
   )
